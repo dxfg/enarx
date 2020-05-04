@@ -1,0 +1,25 @@
+[tasks.build]
+args = ["build"]
+
+[tasks.test]
+clear = true
+run_task = [
+    { name = "test-kvm-nightly",  condition = { platforms = ["linux"], channels = ["nightly"], files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/../payload/target/x86_64-unknown-linux-musl/debug/payload", "${CARGO_MAKE_WORKING_DIRECTORY}/../enarx-keep-sev/target/debug/enarx-keep-sev", "/dev/kvm"] } },
+    { name = "test-qemu-nightly", condition = { platforms = ["linux"], channels = ["nightly"], files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/../payload/target/x86_64-unknown-linux-musl/debug/payload", "/usr/bin/qemu-system-x86_64" ]} },
+    { name = "test-default" }
+]
+
+[tasks.test-default]
+disabled = true
+
+[tasks.test-kvm-nightly]
+toolchain = "nightly"
+command = "cargo"
+args = [ "test", "--features=test_kvm" ]
+env = { "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUNNER" = "${CARGO_MAKE_WORKING_DIRECTORY}/../enarx-keep-sev/target/debug/enarx-keep-sev --code ${CARGO_MAKE_WORKING_DIRECTORY}/../payload/target/x86_64-unknown-linux-musl/debug/payload --shim " }
+
+[tasks.test-qemu-nightly]
+toolchain = "nightly"
+command = "cargo"
+args = [ "test", "--features=test_qemu" ]
+env = { "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUNNER" = "${CARGO_MAKE_WORKING_DIRECTORY}/qemu-test-runner.sh --code ${CARGO_MAKE_WORKING_DIRECTORY}/../payload/target/x86_64-unknown-linux-musl/debug/payload --shim " }

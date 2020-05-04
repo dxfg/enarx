@@ -1,0 +1,9 @@
+#[target.x86_64-unknown-linux-musl]
+#runner = "../enarx-keep-sev/target/debug/enarx-keep-sev --code ../payload/target/x86_64-unknown-linux-musl/debug/payload --shim "
+
+[build]
+target = "x86_64-unknown-linux-musl"
+rustflags = [
+    "-C", "relocation-model=pic",
+    "-C", "linker=../cc",
+]

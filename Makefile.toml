@@ -5,6 +5,8 @@ CARGO_MAKE_CRATE_WORKSPACE_MEMBERS = [
 	"crt0stack",
 	"enarx-keep-sgx",
 	"enarx-keep-sgx-shim",
+	"enarx-keep-sev",
+	"enarx-keep-sev-shim",
 	"enumerate",
 	"intel-types",
 	"iocuddle",
@@ -76,3 +78,5 @@ dependencies = [
 	"misc-lints-clippy-all",
 	"misc-lints-missing-docs",
 ]
+[tasks.build]
+args = ["build"]

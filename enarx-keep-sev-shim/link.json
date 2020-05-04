@@ -1,0 +1,27 @@
+{
+    "build": {
+        "prepend": [
+            "-Wl,--script=layout.ld",
+            "-Wl,--no-relax",
+            "-nostartfiles",
+            "-v"
+        ],
+
+        "replace": {
+            ".*crt.\\.o": [],
+            "-Wl,-Bdynamic": []
+        },
+
+        "insert-target-rlib": ["libc"],
+
+        "debug": false
+    },
+
+    "test": {
+        "replace": {
+            "-lasm": []
+        },
+
+        "debug": false
+    }
+}

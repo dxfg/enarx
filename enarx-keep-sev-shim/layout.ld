@@ -14,6 +14,7 @@ PHDRS
     rodata      PT_LOAD;
     data        PT_LOAD;
     text        PT_LOAD;
+    bss         PT_LOAD;
 }
 
 KERNEL_OFFSET = 0x80000000000;
@@ -30,7 +31,8 @@ SECTIONS
     . = 2M + KERNEL_OFFSET;
     .rodata : AT(ADDR(.rodata) - KERNEL_OFFSET) { *(.rodata .rodata.*)            } :rodata
     .text   : AT(ADDR(.text)   - KERNEL_OFFSET) { *(.text .text.*)                } :text
-    .data   : AT(ADDR(.data)   - KERNEL_OFFSET) { *(.data .data.*) *(.got .got.*) *(.bss .bss.*) } :data
+    .data   : AT(ADDR(.data)   - KERNEL_OFFSET) { *(.data .data.*) *(.got .got.*) } :data
+    .bss    : AT(ADDR(.bss)    - KERNEL_OFFSET) { *(.bss .bss.*) } :bss
 
     _kernel_start = ADDR(.rodata) - KERNEL_OFFSET;
     _kernel_end = . - KERNEL_OFFSET;

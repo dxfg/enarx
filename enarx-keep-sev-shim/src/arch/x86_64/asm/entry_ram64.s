@@ -9,7 +9,6 @@
 _start:
     movabs $_start_main,%rax
 
-
 # %rax  = jmp to start function
 # %rdi  = first parameter for start function
 .p2align 4
@@ -49,9 +48,9 @@ _before_jump:
     # jump into kernel address space
     jmpq *%rax
 
-.pto_halt_loop:
+1:
     hlt
-    jmp .pto_halt_loop
+    jmp 1b
 
 stack_size = 0x10000
 

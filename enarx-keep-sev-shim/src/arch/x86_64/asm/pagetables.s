@@ -11,12 +11,16 @@
 .global PML4T
 .align 4096
 PML4T:
-.space 4096
+.quad (PML3IDENT + 0b00000111)
+.space 120
+.quad (PML3TO + 0b00000111)
+.space (4096-120-2)
 
 .global PML3IDENT
 .align 4096
 PML3IDENT:
-.space 4096
+.quad (PML2IDENT + 0b00000111)
+.space 4088
 
 .global PML3TO
 .align 4096

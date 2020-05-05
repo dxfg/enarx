@@ -37,7 +37,6 @@ _setup_pto:
     mov  %rax, %cr3
     invlpg (%eax)
 
-_before_jump:
     mov    %r11, %rdi
     mov    %r12, %rax
 

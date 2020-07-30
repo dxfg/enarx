@@ -54,6 +54,6 @@ pub trait Thread {
     fn enter(&mut self) -> Result<Command>;
 }
 
-pub enum Command<'a> {
-    SysCall(&'a mut Block),
+pub enum Command {
+    SysCall(*mut Block),
 }

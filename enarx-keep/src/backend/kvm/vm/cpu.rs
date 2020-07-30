@@ -11,6 +11,7 @@ use x86_64::registers::control::{Cr0Flags, Cr4Flags};
 use x86_64::registers::model_specific::EferFlags;
 use x86_64::PhysAddr;
 
+use sallyport::Block;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::{Arc, RwLock};
 
@@ -105,7 +106,16 @@ impl Thread for Cpu {
     fn enter(&mut self) -> Result<Command> {
         match self.fd.run()? {
             VcpuExit::IoOut(port, _) => match port {
-                SYSCALL_TRIGGER_PORT => unimplemented!(),
+                SYSCALL_TRIGGER_PORT => {
+                    let block = self
+                        .keep
+                        .read()
+                        .unwrap()
+                        .address_space
+                        .prefix_mut()
+                        .shared_pages as *mut _ as *mut Block;
+                    Ok(Command::SysCall(block))
+                }
                 _ => Err(Error::new(ErrorKind::Other, "data from unexpected port")),
             },
             exit_reason => Err(Error::new(ErrorKind::Other, format!("{:?}", exit_reason))),

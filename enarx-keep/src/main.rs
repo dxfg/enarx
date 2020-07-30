@@ -103,7 +103,7 @@ fn exec(backends: HashMap<String, Box<dyn Backend>>, opts: Exec) -> Result<()> {
     loop {
         match thread.enter()? {
             Command::SysCall(block) => unsafe {
-                block.msg.rep = block.msg.req.syscall();
+                (*block).msg.rep = (*block).msg.req.syscall();
             },
         }
     }

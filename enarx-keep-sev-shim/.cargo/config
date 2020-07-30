@@ -1,6 +1,8 @@
 [build]
-target = "x86_64-unknown-linux-musl"
+target = "x86_64-unknown-enarx-musl.json"
 rustflags = [
     "-C", "relocation-model=pic",
-    "-C", "linker=../cc",
 ]
+
+[unstable]
+build-std = [ "core" ]

@@ -5,11 +5,9 @@
         ],
 
         "replace": {
-            ".*/crt.\\.o": [],
+            ".*/.?crt.\\.o": [],
             "-no-pie": []
         },
-
-        "append-target-rlib": ["libc"],
 
         "debug": false
     },

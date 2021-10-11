@@ -138,6 +138,7 @@ dependencies = [
  "lset",
  "mmarinus",
  "nbytes",
+ "once_cell",
  "openssl",
  "primordial",
  "process_control",

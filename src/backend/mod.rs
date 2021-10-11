@@ -18,6 +18,8 @@ use anyhow::{Error, Result};
 use mmarinus::{perms, Map};
 use sallyport::Block;
 
+use once_cell::sync::OnceCell;
+
 trait Config: Sized {
     type Flags;
 
@@ -41,7 +43,7 @@ trait Loader: Mapper {
     fn load(shim: impl AsRef<[u8]>, exec: impl AsRef<[u8]>) -> Result<Self::Output>;
 }
 
-pub trait Backend {
+pub trait Backend: Sync + Send {
     /// The name of the backend
     fn name(&self) -> &'static str;
 
@@ -96,4 +98,17 @@ pub enum Command<'a> {
 
     #[allow(dead_code)]
     Continue,
+}
+
+#[inline]
+pub fn builtin_backends() -> &'static [Box<dyn Backend>] {
+    static BACKENDS: OnceCell<Vec<Box<dyn Backend>>> = OnceCell::new();
+    &BACKENDS.get_or_init(|| {
+        vec![
+            #[cfg(feature = "backend-sgx")]
+            Box::new(sgx::Backend),
+            #[cfg(feature = "backend-kvm")]
+            Box::new(kvm::Backend),
+        ]
+    })[..]
 }

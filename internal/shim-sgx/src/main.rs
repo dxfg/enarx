@@ -56,7 +56,8 @@ use sallyport::{elf::note, REQUIRES};
 use sgx::parameters::{Attributes, Features, MiscSelect, Xfrm};
 use sgx::ssa::StateSaveArea;
 
-const DEBUG: bool = false;
+// v0.1.0 KEEP-CONFIG HACK: debugging on
+const DEBUG: bool = true;
 
 const ENCL_SIZE_BITS: u8 = 31;
 const ENCL_SIZE: usize = 1 << ENCL_SIZE_BITS;

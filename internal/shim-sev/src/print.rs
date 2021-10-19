@@ -11,7 +11,7 @@ struct HostWrite(HostFd);
 
 // FIXME: remove, if https://github.com/enarx/enarx/issues/831 is fleshed out
 /// Global flag allowing debug output.
-pub const TRACE: bool = false;
+pub const TRACE: bool = true;
 
 /// start with printing disabled
 static mut PRINT_INHIBITOR: AtomicUsize = AtomicUsize::new(1);

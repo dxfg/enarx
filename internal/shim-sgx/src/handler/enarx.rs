@@ -2,8 +2,6 @@
 
 use crate::uarch::{Report, ReportData, TargetInfo};
 
-use core::mem::transmute;
-
 use sallyport::request;
 use sallyport::syscall::{
     BaseSyscallHandler, EnarxSyscallHandler, SGX_QUOTE_SIZE, SGX_TECH, SYS_ENARX_GETATT,
@@ -41,32 +39,31 @@ impl<'a> EnarxSyscallHandler for super::Handler<'a> {
         };
 
         // Used internally for buffer size to host when getting TargetInfo
-        const REPORT_LEN: usize = 512;
+        const TARGETINFO_SIZE: usize = core::mem::size_of::<TargetInfo>();
 
         // Validate output buf memory
         let buf = buf.validate_slice(buf_len, self).ok_or(libc::EFAULT)?;
 
         // Request TargetInfo from host by passing nonce as 0
         let c = self.new_cursor();
-        let (_, shim_buf_ptr) = c.alloc::<u8>(buf_len).or(Err(libc::EMSGSIZE))?;
-        let req = request!(SYS_ENARX_GETATT => 0, 0, shim_buf_ptr.as_ptr(), REPORT_LEN);
+        let (_, shim_buf_ptr) = c.alloc::<u8>(TARGETINFO_SIZE).or(Err(libc::EMSGSIZE))?;
+        let req = request!(SYS_ENARX_GETATT => 0, 0, shim_buf_ptr.as_ptr(), TARGETINFO_SIZE);
         unsafe { self.proxy(req)? };
 
         // Retrieve TargetInfo from sallyport block and call EREPORT to
         // create Report from TargetInfo.
         let c = self.new_cursor();
+        let (_c, src) = c.alloc::<u8>(TARGETINFO_SIZE).or(Err(libc::EFAULT))?;
+
+        // TargetInfo is align(512), but the sallyport buffer is not.
+        let target_info = unsafe { (src.as_ptr() as *const TargetInfo).read_unaligned() };
 
         // Generate Report
-        let target_info = unsafe {
-            let mut target_info_buf = [0u8; 512];
-            c.copy_into_slice(512, &mut target_info_buf[..])
-                .or(Err(libc::EFAULT))?;
-            transmute::<[u8; 512], TargetInfo>(target_info_buf)
-        };
-
         let report: Report = target_info.enclu_ereport(&ReportData(hash));
 
         // Request Quote from host
+
+        // Report is align(512), but for sallyport serialize to unaligned
         let report_slice = &[report];
         let report_bytes = unsafe {
             core::slice::from_raw_parts(

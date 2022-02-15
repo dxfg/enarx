@@ -6,11 +6,11 @@
 use crate::protobuf::aesm_proto::{
     Request, Request_GetQuoteExRequest, Request_GetSupportedAttKeyIDNumRequest,
     Request_GetSupportedAttKeyIDsRequest, Request_InitQuoteExRequest, Response,
-    Response_GetQuoteExResponse, Response_InitQuoteExResponse,
 };
 
 use std::io::{Error, ErrorKind, Read, Write};
 use std::mem::size_of;
+use std::ops::{Deref, DerefMut};
 use std::os::unix::net::UnixStream;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
@@ -21,95 +21,37 @@ const AESM_SOCKET: &str = "/var/run/aesmd/aesm.socket";
 const AESM_REQUEST_TIMEOUT: u32 = 1_000_000;
 const SGX_KEY_ID_SIZE: u32 = 256;
 
-// Specifies the protobuf Request type to communicate with AESMD.
-#[derive(Debug)]
-enum ReqType {
-    AkIdNum,
-    AkId,
-    TInfo,
-    KeySize,
-    Quote,
+struct AesmRequest(Request);
+
+impl Deref for AesmRequest {
+    type Target = Request;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl ReqType {
-    fn set_request(
-        &self,
-        report: Option<&[u8; 432]>,
-        akid: Option<Vec<u8>>,
-        size: Option<usize>,
-    ) -> Result<Request, Error> {
-        let mut req = Request::new();
+impl DerefMut for AesmRequest {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
-        match self {
-            ReqType::AkIdNum => {
-                // FIXME: Return an error instead of silent ignore.
-                unimplemented!()
-            }
-            ReqType::AkId => {
-                // FIXME: Return an error instead of silent ignore.
-                unimplemented!()
-            }
-            ReqType::TInfo => {
-                let akid = akid.ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Other,
-                        "Missing attestation key ID from InitQuoteEx",
-                    )
-                })?;
-                let size = size.ok_or_else(|| {
-                    Error::new(ErrorKind::Other, "Missing key size from InitQuoteEx")
-                })?;
-                let mut msg = Request_InitQuoteExRequest::new();
-                msg.set_timeout(AESM_REQUEST_TIMEOUT);
-                msg.set_b_pub_key_id(true);
-                msg.set_att_key_id(akid);
-                msg.set_buf_size(size as u64);
-                req.set_initQuoteExReq(msg);
-                Ok(req)
-            }
-            ReqType::KeySize => {
-                let akid = akid.ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Other,
-                        "Missing attestation key ID from InitQuoteEx",
-                    )
-                })?;
-                let mut msg = Request_InitQuoteExRequest::new();
-                msg.set_timeout(AESM_REQUEST_TIMEOUT);
-                msg.set_b_pub_key_id(false);
-                msg.set_att_key_id(akid);
-                req.set_initQuoteExReq(msg);
-                Ok(req)
-            }
-            ReqType::Quote => {
-                let akid = akid.ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Other,
-                        "Missing attestation key ID from InitQuoteEx",
-                    )
-                })?;
-                let report = report.ok_or_else(|| {
-                    Error::new(ErrorKind::Other, "Missing REPORT structure from GetQuoteEx")
-                })?;
-                let mut msg = Request_GetQuoteExRequest::new();
-                msg.set_timeout(AESM_REQUEST_TIMEOUT);
-                msg.set_report(report.to_vec());
-                msg.set_att_key_id(akid);
-                msg.set_buf_size(SGX_QUOTE_SIZE as u32);
-                req.set_getQuoteExReq(msg);
-                Ok(req)
-            }
-        }
+impl AesmRequest {
+    fn new() -> Self {
+        Self(Request::new())
     }
 
-    fn send_request(&self, req: Request, stream: &mut UnixStream) -> Result<Response, Error> {
+    fn send(&self) -> Result<Response, Error> {
+        let mut stream = UnixStream::connect(AESM_SOCKET)?;
+
         // Set up writer
         let mut buf_wrtr = vec![0u8; size_of::<u32>()];
 
-        req.write_to_writer(&mut buf_wrtr).map_err(|e| {
+        self.write_to_writer(&mut buf_wrtr).map_err(|e| {
             Error::new(
                 ErrorKind::Other,
-                format!("Invalid protobuf request: {:?}. Error: {:?}", req, e),
+                format!("Invalid protobuf request: {:?}. Error: {:?}", self.0, e),
             )
         })?;
 
@@ -134,18 +76,17 @@ impl ReqType {
     }
 }
 
-/// Gets Att Key ID
-fn get_attestation_key_id() -> Result<Vec<u8>, Error> {
-    let mut stream = UnixStream::connect(AESM_SOCKET)?;
+fn get_key_id_num() -> Result<u32, Error> {
+    let mut req = AesmRequest::new();
 
-    let r = ReqType::AkIdNum;
-    let mut req = Request::new();
     let mut msg = Request_GetSupportedAttKeyIDNumRequest::new();
     msg.set_timeout(AESM_REQUEST_TIMEOUT);
     req.set_getSupportedAttKeyIDNumReq(msg);
-    let pb_msg: Response = r.send_request(req, &mut stream)?;
+
+    let pb_msg = req.send()?;
 
     let res = pb_msg.get_getSupportedAttKeyIDNumRes();
+
     if res.get_errorCode() != 0 {
         return Err(Error::new(
             ErrorKind::Other,
@@ -156,26 +97,20 @@ fn get_attestation_key_id() -> Result<Vec<u8>, Error> {
         ));
     }
 
-    let num_key_ids = res.get_att_key_id_num();
-    if num_key_ids != 1 {
-        return Err(Error::new(
-            ErrorKind::Other,
-            format!("Unexpected number of key IDs: {} != 1", num_key_ids),
-        ));
-    }
+    Ok(res.get_att_key_id_num())
+}
 
+fn get_key_ids(num_key_ids: u32) -> Result<Vec<Vec<u8>>, Error> {
     let expected_buffer_size: u32 = num_key_ids * SGX_KEY_ID_SIZE;
 
-    let mut stream = UnixStream::connect(AESM_SOCKET)?;
+    let mut req = AesmRequest::new();
 
-    let r = ReqType::AkId;
-    let mut req = Request::new();
     let mut msg = Request_GetSupportedAttKeyIDsRequest::new();
     msg.set_timeout(AESM_REQUEST_TIMEOUT);
     msg.set_buf_size(expected_buffer_size);
     req.set_getSupportedAttKeyIDsReq(msg);
 
-    let pb_msg: Response = r.send_request(req, &mut stream)?;
+    let pb_msg = req.send()?;
 
     let res = pb_msg.get_getSupportedAttKeyIDsRes();
 
@@ -187,10 +122,23 @@ fn get_attestation_key_id() -> Result<Vec<u8>, Error> {
     }
 
     let key_ids_blob = res.get_att_key_ids();
-    let key_ids: Vec<Vec<u8>> = key_ids_blob
+    Ok(key_ids_blob
         .chunks_exact(SGX_KEY_ID_SIZE as usize)
         .map(Vec::from)
-        .collect();
+        .collect())
+}
+
+/// Gets Att Key ID
+fn get_attestation_key_id() -> Result<Vec<u8>, Error> {
+    let num_key_ids = get_key_id_num()?;
+    if num_key_ids != 1 {
+        return Err(Error::new(
+            ErrorKind::Other,
+            format!("Unexpected number of key IDs: {} != 1", num_key_ids),
+        ));
+    }
+
+    let key_ids = get_key_ids(num_key_ids)?;
 
     if key_ids.len() != 1 {
         return Err(Error::new(
@@ -219,13 +167,26 @@ fn get_target_info(akid: Vec<u8>, size: usize, out_buf: &mut [u8]) -> Result<usi
         ));
     }
 
-    let mut stream = UnixStream::connect(AESM_SOCKET)?;
+    let mut req = AesmRequest::new();
+    let mut msg = Request_InitQuoteExRequest::new();
 
-    let r = ReqType::TInfo;
-    let pb_req = r.set_request(None, Some(akid), Some(size))?;
-    let mut pb_msg: Response = r.send_request(pb_req, &mut stream)?;
+    msg.set_timeout(AESM_REQUEST_TIMEOUT);
+    msg.set_b_pub_key_id(true);
+    msg.set_att_key_id(akid);
+    msg.set_buf_size(size as u64);
+    req.set_initQuoteExReq(msg);
 
-    let res: Response_InitQuoteExResponse = pb_msg.take_initQuoteExRes();
+    let pb_msg = req.send()?;
+
+    let res = pb_msg.get_initQuoteExRes();
+
+    if res.get_errorCode() != 0 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("InitQuoteExRequest: error: {:?}", res.get_errorCode()),
+        ));
+    }
+
     let ti = res.get_target_info();
 
     if ti.len() != SGX_TI_SIZE {
@@ -246,13 +207,17 @@ fn get_target_info(akid: Vec<u8>, size: usize, out_buf: &mut [u8]) -> Result<usi
 
 /// Gets key size
 fn get_key_size(akid: Vec<u8>) -> Result<usize, Error> {
-    let mut stream = UnixStream::connect(AESM_SOCKET)?;
+    let mut req = AesmRequest::new();
+    let mut msg = Request_InitQuoteExRequest::new();
 
-    let r = ReqType::KeySize;
-    let pb_req = r.set_request(None, Some(akid), None)?;
-    let mut pb_msg: Response = r.send_request(pb_req, &mut stream)?;
+    msg.set_timeout(AESM_REQUEST_TIMEOUT);
+    msg.set_b_pub_key_id(false);
+    msg.set_att_key_id(akid);
+    req.set_initQuoteExReq(msg);
 
-    let res: Response_InitQuoteExResponse = pb_msg.take_initQuoteExRes();
+    let pb_msg = req.send()?;
+
+    let res = pb_msg.get_initQuoteExRes();
 
     if res.get_errorCode() != 0 {
         return Err(Error::new(
@@ -278,22 +243,28 @@ fn get_quote(report: &[u8], akid: Vec<u8>, out_buf: &mut [u8]) -> Result<usize, 
         ));
     }
 
-    let mut stream = UnixStream::connect(AESM_SOCKET)?;
+    let mut req = AesmRequest::new();
 
-    let r = ReqType::Quote;
-    let mut report_array = [0u8; 432];
-    report_array.copy_from_slice(&report[0..432]);
-    let req = r.set_request(Some(&report_array), Some(akid), None)?;
-    let mut pb_msg = r.send_request(req, &mut stream)?;
+    let mut msg = Request_GetQuoteExRequest::new();
+    msg.set_timeout(AESM_REQUEST_TIMEOUT);
+    msg.set_report(report[0..432].to_vec());
+    msg.set_att_key_id(akid);
+    msg.set_buf_size(SGX_QUOTE_SIZE as u32);
+    req.set_getQuoteExReq(msg);
 
-    let res: Response_GetQuoteExResponse = pb_msg.take_getQuoteExRes();
+    let pb_msg = req.send()?;
+
+    let res = pb_msg.get_getQuoteExRes();
+
     if res.get_errorCode() != 0 {
         return Err(Error::new(
             ErrorKind::InvalidData,
             format!("GetQuoteEx error: {:?}", res.get_errorCode()),
         ));
     }
+
     let quote = res.get_quote();
+
     if quote.len() != SGX_QUOTE_SIZE {
         return Err(Error::new(
             ErrorKind::InvalidData,
@@ -321,11 +292,11 @@ pub fn get_attestation(
     let out_buf: &mut [u8] = unsafe { from_raw_parts_mut(buf as *mut u8, buf_len) };
 
     if nonce == 0 {
-        let akid = get_attestation_key_id().expect("error obtaining att key id");
+        let akid = get_attestation_key_id().expect("error obtaining attestation key id");
         let pkeysize = get_key_size(akid.clone()).expect("error obtaining key size");
         get_target_info(akid, pkeysize, out_buf)
     } else {
-        let akid = get_attestation_key_id().unwrap();
+        let akid = get_attestation_key_id().expect("error obtaining attestation key id");
         let report: &[u8] = unsafe { from_raw_parts(nonce as *const u8, nonce_len) };
         get_quote(report, akid, out_buf)
     }

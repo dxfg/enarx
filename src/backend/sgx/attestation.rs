@@ -295,7 +295,10 @@ pub fn get_attestation(
 
     if nonce == 0 {
         let pkeysize = get_key_size(akid.clone()).expect("error obtaining key size");
-        get_target_info(akid, pkeysize, out_buf)
+        dbg!(pkeysize);
+        let res = get_target_info(akid, pkeysize, out_buf);
+        dbg!(&res);
+        res
     } else {
         let report: &[u8] = unsafe { from_raw_parts(nonce as *const u8, nonce_len) };
         get_quote(report, akid, out_buf)

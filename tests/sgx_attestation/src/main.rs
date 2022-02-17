@@ -138,8 +138,12 @@ pub fn get_att_syscall(
         return Err(std::io::Error::from_raw_os_error(-rax as _));
     }
 
+    dbg!(rdx);
+
     let tech = TeeTech::try_from(rdx)
         .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+
+    dbg!(rax);
 
     Ok((rax as _, tech))
 }
@@ -149,6 +153,8 @@ fn main() -> std::io::Result<()> {
 
     if matches!(tech, TeeTech::Sgx) {
         assert_eq!(len, 4598);
+
+        eprintln!("Test it!");
 
         get_att([
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
@@ -168,10 +174,13 @@ fn get_att(mut nonce: [u8; 64]) -> std::io::Result<()> {
     let mut buffer = [0u8; 4598];
     let (len, tech) = get_att_syscall(Some(&mut nonce[..]), Some(&mut buffer))?;
 
+    dbg!(tech);
+
     assert!(matches!(tech, TeeTech::Sgx));
 
     let quote = Quote::try_from(buffer.as_ref()).map_err(|e| {
-        eprintln!("{:#?}", e);
+        dbg!(&e);
+        eprintln!("Quote::try_from {:#?}", e);
         std::io::Error::from(std::io::ErrorKind::InvalidData)
     })?;
 

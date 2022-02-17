@@ -190,25 +190,25 @@ impl TryFrom<&[u8]> for SigData {
         qe_cert_data_type_bytes.copy_from_slice(&bytes[qe_auth_end..(qe_auth_end + 2)]);
         let qe_cert_data_type =
             CertDataType::try_from(u16::from_le_bytes(qe_cert_data_type_bytes))?;
+
+        if qe_cert_data_type != CertDataType::PCKCertChain {
+            return Err(QuoteError(format!(
+                "Expected CertDataType::PCKCertChain, got: {}",
+                qe_cert_data_type
+            )));
+        }
         /*
-                if qe_cert_data_type != CertDataType::PCKCertChain {
+                if qe_cert_data_type != CertDataType::PpidRSA3072OAEP {
+                    #[warn(dead_code)]
+                    const WARNING: &str =
+                        "Please recheck, that we want PpidRSA3072OAEP and not a PCKCertChain";
+
                     return Err(QuoteError(format!(
-                        "Expected CertDataType::PCKCertChain, got: {}",
+                        "Expected CertDataType::PpidRSA3072, got: {}",
                         qe_cert_data_type
                     )));
                 }
         */
-        if qe_cert_data_type != CertDataType::PpidRSA3072OAEP {
-            #[warn(dead_code)]
-            const WARNING: &str =
-                "Please recheck, that we want PpidRSA3072OAEP and not a PCKCertChain";
-
-            return Err(QuoteError(format!(
-                "Expected CertDataType::PpidRSA3072, got: {}",
-                qe_cert_data_type
-            )));
-        }
-
         let cert_data_len_start = qe_auth_end + 2;
         let mut cert_data_len_bytes = [0u8; 4];
         cert_data_len_bytes.copy_from_slice(&bytes[cert_data_len_start..(cert_data_len_start + 4)]);

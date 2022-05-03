@@ -185,13 +185,13 @@ $ cargo install --bin enarx --path ./
 
 :::note
 
-Rust version nightly-2022-05-03 is required when installing Enarx 0.4.0 from crates.io.
+Rust version nightly-2022-05-03 is required when installing Enarx 0.5.0-pre from crates.io.
 
 :::
 
 ```sh:crates;
 $ rustup toolchain install nightly-2022-05-03 -t x86_64-unknown-linux-musl,x86_64-unknown-linux-gnu,x86_64-unknown-none
-$ CARGO_TARGET_X86_64_UNKNOWN_NONE_RUSTFLAGS="-C linker=gcc" cargo +nightly-2022-05-03 -Z bindeps install --bin enarx --version 0.4.0 -- enarx
+$ CARGO_TARGET_X86_64_UNKNOWN_NONE_RUSTFLAGS="-C linker=gcc" cargo +nightly-2022-05-03 -Z bindeps install --bin enarx --version 0.5.0-pre -- enarx
 ```
 
 ### Install from Nix
@@ -236,7 +236,7 @@ $ cargo +nightly build --release --target=wasm32-wasi
 
 Assuming you did install the `enarx` binary and have it in your `$PATH`, you can
 now run the WebAssembly program in an Enarx keep.
-```sh:helloworld-git;
+```sh:helloworld;
 $ enarx run target/wasm32-wasi/release/hello-world.wasm
 ```
 ```console
@@ -250,7 +250,7 @@ If you want to suppress the debug output, add `2>/dev/null`.
 `enarx` will probe the machine it is running on in an attempt to deduce an
 appropriate deployment backend. To see what backends are supported on your
 system, run:
-```sh:git;
+```sh:
 $ enarx info
 ```
 You can manually select a backend with the `--backend` option, or by
@@ -283,3 +283,4 @@ Enarx provides a WebAssembly runtime, offering developers a wide range of langua
 Enarx is CPU-architecture independent, enabling the same application code to be deployed across multiple targets, abstracting issues such as cross-compilation and differing attestation mechanisms between hardware vendors.
 
 License: Apache-2.0
+

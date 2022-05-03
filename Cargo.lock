@@ -564,7 +564,7 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "enarx"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "anyhow",
  "atty",
@@ -596,7 +596,7 @@ dependencies = [
  "rand",
  "rust_exec_tests",
  "rust_syscall_tests",
- "sallyport 0.4.0",
+ "sallyport",
  "semver",
  "serde",
  "serde_json",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "enarx-exec-wasmtime"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "anyhow",
  "cap-std",
@@ -647,7 +647,7 @@ dependencies = [
 
 [[package]]
 name = "enarx-exec-wasmtime-bin"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "anyhow",
  "clap",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "enarx-shim-kvm"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "aes-gcm",
  "array-const-fn-init",
@@ -673,7 +673,7 @@ dependencies = [
  "noted",
  "primordial",
  "rcrt1",
- "sallyport 0.4.0",
+ "sallyport",
  "spinning",
  "testaso",
  "x86_64",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "enarx-shim-sgx"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "const-default",
  "crt0stack",
@@ -693,7 +693,7 @@ dependencies = [
  "noted",
  "primordial",
  "rcrt1",
- "sallyport 0.4.0",
+ "sallyport",
  "sgx",
  "spinning",
  "x86_64",
@@ -1636,7 +1636,7 @@ version = "0.1.0"
 dependencies = [
  "goblin 0.5.1",
  "rcrt1",
- "sallyport 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sallyport",
 ]
 
 [[package]]
@@ -1693,22 +1693,13 @@ checksum = "73b4b750c782965c211b42f022f59af1fbceabdd026623714f104152f1ec149f"
 
 [[package]]
 name = "sallyport"
-version = "0.4.0"
+version = "0.5.0-pre"
 dependencies = [
  "gdbstub 0.6.1",
  "goblin 0.5.1",
  "libc",
  "serial_test",
  "testaso",
-]
-
-[[package]]
-name = "sallyport"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77d32884a5700fb9298473bb829536f523437523f410793ff3d64531e17b3927"
-dependencies = [
- "goblin 0.5.1",
 ]
 
 [[package]]
@@ -1828,7 +1819,7 @@ dependencies = [
 name = "sev_attestation"
 version = "0.1.0"
 dependencies = [
- "sallyport 0.4.0",
+ "sallyport",
  "testaso",
 ]
 

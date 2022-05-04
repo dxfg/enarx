@@ -16,6 +16,7 @@ use x509::ext::pkix::{BasicConstraints, ExtendedKeyUsage, KeyUsage, KeyUsages};
 use x509::name::RdnSequence;
 use x509::time::Validity;
 use x509::{Certificate, PkiPath, TbsCertificate};
+use x509_cert as x509;
 
 use const_oid::db::rfc5280::{
     ID_CE_BASIC_CONSTRAINTS, ID_CE_EXT_KEY_USAGE, ID_CE_KEY_USAGE, ID_KP_CLIENT_AUTH,

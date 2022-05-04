@@ -17,6 +17,7 @@ use sha2::{Digest, Sha256, Sha384};
 use x509::der::{asn1::BitString, Any, Decodable, Encodable};
 use x509::request::{CertReq, CertReqInfo, ExtensionReq};
 use x509::{attr::Attribute, ext::Extension, name::RdnSequence};
+use x509_cert as x509;
 
 impl Loader<Configured> {
     pub fn make_csr(pki: &PrivateKeyInfo<'_>, exts: Vec<Extension<'_>>) -> Result<Vec<u8>> {

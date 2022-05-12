@@ -9,112 +9,134 @@
   inputs.nixpkgs.url = github:NixOS/nixpkgs/nixos-unstable;
 
   outputs = { self, nixpkgs, fenix, flake-utils, ... }:
-    with flake-utils.lib; eachSystem [
-      system.aarch64-darwin
-      system.aarch64-linux
-      system.x86_64-darwin
-      system.x86_64-linux
+    with flake-utils.lib.system; flake-utils.lib.eachSystem [
+      aarch64-darwin
+      aarch64-linux
+      x86_64-darwin
+      x86_64-linux
     ]
       (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
 
-          cargoToml = builtins.fromTOML (builtins.readFile "${self}/Cargo.toml");
+          cargo.toml = builtins.fromTOML (builtins.readFile "${self}/Cargo.toml");
+
+          rust.dev = fenix.packages.${system}.fromToolchainFile {
+            file = "${self}/rust-toolchain.toml";
+          };
+
+          rust.build = with fenix.packages.${system}; combine [
+            minimal.cargo
+            minimal.rustc
+            targets.aarch64-unknown-linux-musl.latest.rust-std
+            targets.wasm32-wasi.latest.rust-std # required for tests
+            targets.x86_64-unknown-linux-musl.latest.rust-std
+            targets.x86_64-unknown-none.latest.rust-std
+          ];
+
+          buildPackage = pkgs: extraArgs: (pkgs.makeRustPlatform {
+            rustc = rust.build;
+            cargo = rust.build;
+          }).buildRustPackage
+            (extraArgs // {
+              inherit (cargo.toml.package) name version;
+
+              src = pkgs.nix-gitignore.gitignoreRecursiveSource [
+                "*.nix"
+                "*.yml"
+                "/.github"
+                "/docs"
+                "/README-DEBUG.md"
+                "/SECURITY.md"
+                "deny.toml"
+                "flake.lock"
+                "LICENSE"
+                "rust-toolchain.toml"
+              ]
+                self;
+
+              cargoLock.lockFileContents = builtins.readFile "${self}/Cargo.lock";
+
+              postPatch = ''
+                patchShebangs ./helper
+              '';
+
+              buildInputs = pkgs.lib.optional pkgs.stdenv.isDarwin
+                pkgs.darwin.apple_sdk.frameworks.Security;
+            });
+
+          dynamicBin = buildPackage pkgs {
+            cargoTestFlags = [ "wasm::" ];
+          };
+
+          stdenvGcc = pkgs: with pkgs.stdenv; "${cc}/bin/${cc.targetPrefix}gcc";
+
+          staticBin = buildPackage pkgs.pkgsStatic
+            {
+              CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+
+              depsBuildBuild = [
+                pkgs.stdenv.cc
+              ];
+
+              meta.mainProgram = cargo.toml.package.name;
+            }
+          // pkgs.lib.optionalAttrs (system == aarch64-linux) {
+            CARGO_BUILD_TARGET = "aarch64-unknown-linux-musl";
+            CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = stdenvGcc pkgs.pkgsMusl;
+
+            # TODO: verify that the binary is indeed static
+          }
+          // pkgs.lib.optionalAttrs (system == x86_64-linux) {
+            CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = stdenvGcc pkgs.pkgsMusl;
+
+            postInstall = ''
+              ldd $out/bin/${cargo.toml.package.name} | grep -q 'statically linked' || (echo "binary is not statically linked"; exit 1)
+            '';
+          };
+
+          staticAarch64Bin = buildPackage pkgs.pkgsStatic
+            ({
+              CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+              CARGO_BUILD_TARGET = "aarch64-unknown-linux-musl";
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = stdenvGcc (
+                if system == aarch64-linux then pkgs
+                else pkgs.pkgsCross.aarch64-multiplatform
+              ).pkgsMusl;
+
+              depsBuildBuild = [
+                pkgs.stdenv.cc
+              ];
+
+              meta.mainProgram = cargo.toml.package.name;
+            });
+
+          ociImage = pkgs.dockerTools.buildImage {
+            inherit (cargo.toml.package) name;
+            tag = cargo.toml.package.version;
+            contents = [
+              staticBin
+            ];
+            config.Cmd = [ cargo.toml.package.name ];
+            config.Env = [ "PATH=${staticBin}/bin" ];
+          };
         in
         {
-          defaultPackage = self.packages.${system}.${cargoToml.package.name};
+          defaultPackage = dynamicBin;
 
-          packages =
-            let
-              rust = with fenix.packages.${system};
-                combine [
-                  minimal.cargo
-                  minimal.rustc
-                  targets.wasm32-wasi.latest.rust-std # required for tests
-                  targets.x86_64-unknown-linux-musl.latest.rust-std
-                  targets.x86_64-unknown-none.latest.rust-std
-                ];
+          packages = {
+            "${cargo.toml.package.name}" = dynamicBin;
+            "${cargo.toml.package.name}-static" = staticBin;
+            "${cargo.toml.package.name}-static-aarch64" = staticAarch64Bin;
+            "${cargo.toml.package.name}-docker" = ociImage;
+          };
 
-              buildPackage = pkgs: extraArgs: (pkgs.makeRustPlatform {
-                rustc = rust;
-                cargo = rust;
-              }).buildRustPackage
-                (extraArgs // {
-                  inherit (cargoToml.package) name version;
-
-                  src = pkgs.nix-gitignore.gitignoreRecursiveSource [
-                    "*.nix"
-                    "*.yml"
-                    "/.github"
-                    "/docs"
-                    "/README-DEBUG.md"
-                    "/SECURITY.md"
-                    "deny.toml"
-                    "flake.lock"
-                    "LICENSE"
-                    "rust-toolchain.toml"
-                  ]
-                    self;
-
-                  cargoLock.lockFileContents = builtins.readFile "${self}/Cargo.lock";
-
-                  postPatch = ''
-                    patchShebangs ./helper
-                  '';
-
-                  buildInputs = pkgs.lib.optional pkgs.stdenv.isDarwin
-                    pkgs.darwin.apple_sdk.frameworks.Security;
-                });
-
-              dynamicBin = buildPackage pkgs {
-                cargoTestFlags = [ "wasm::" ];
-              };
-
-              staticBin = buildPackage pkgs.pkgsStatic
-                rec {
-                  CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
-                  CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-                  CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = with pkgs.pkgsMusl.stdenv; "${cc}/bin/${cc.targetPrefix}gcc";
-
-                  depsBuildBuild = [
-                    pkgs.stdenv.cc
-                  ];
-
-                  postBuild = ''
-                    ldd target/${CARGO_BUILD_TARGET}/release/${cargoToml.package.name} | grep -q 'statically linked' || (echo "binary is not statically linked"; exit 1)
-                  '';
-
-                  meta.mainProgram = cargoToml.package.name;
-                };
-
-              ociImage = pkgs.dockerTools.buildImage {
-                inherit (cargoToml.package) name;
-                tag = cargoToml.package.version;
-                contents = [
-                  staticBin
-                ];
-                config.Cmd = [ cargoToml.package.name ];
-                config.Env = [ "PATH=${staticBin}/bin" ];
-              };
-            in
-            {
-              "${cargoToml.package.name}" = dynamicBin;
-            } // pkgs.lib.optionalAttrs (system == flake-utils.lib.system.x86_64-linux) {
-              "${cargoToml.package.name}-static" = staticBin;
-              "${cargoToml.package.name}-docker" = ociImage;
-            };
-
-          devShell =
-            let
-              rust = fenix.packages.${system}.fromToolchainFile {
-                file = "${self}/rust-toolchain.toml";
-              };
-            in
-            pkgs.mkShell {
-              buildInputs = [
-                rust
-              ];
-            };
+          devShell = pkgs.mkShell {
+            buildInputs = [
+              rust.dev
+            ];
+          };
         }
       );
 }

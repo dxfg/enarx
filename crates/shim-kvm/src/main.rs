@@ -186,12 +186,13 @@ macro_rules! correct_table_c_bit {
 #[cfg_attr(coverage, no_coverage)]
 pub unsafe extern "sysv64" fn _start() -> ! {
     asm!(
-        ".set reset_vector_page, 0xFFFFF000",
+        ".set reset_vector_page, 0xFFFFF008",
 
         ".macro define_addr name,label",
         ".set \\name, (reset_vector_page + (\\label - 99b))",
         ".endm",
 
+        ".align 8",
         // 0xFFFF_F000 - the reset vector page
         "99:",
         // A small jump table with well known addresses
@@ -454,7 +455,7 @@ pub unsafe extern "sysv64" fn _start() -> ! {
 
         // end of code
         "97:",
-        ".fill (0xFF0 - (97b - 99b))",
+        ".fill (0xFF0 - (97b - 99b) - 8)",
 
         // reset vector @ 0xFFFF_FFF0
         ".code16",

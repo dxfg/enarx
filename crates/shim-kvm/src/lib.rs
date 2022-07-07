@@ -26,6 +26,7 @@ pub mod print;
 
 pub mod addr;
 pub mod allocator;
+pub mod cet;
 pub mod debug;
 pub mod exec;
 pub mod gdb;

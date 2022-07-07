@@ -4,11 +4,8 @@
 
 use crate::snp::cpuid_count;
 
-use x86_64::registers::control::Cr4Flags;
-use x86_64::registers::{
-    model_specific, 
-    model_specific::{msr, SCet},
-};
+use x86_64::registers::control::{Cr4, Cr4Flags};
+use x86_64::registers::model_specific::{SCet, CetFlags};
 
 /// Setup and check CET compatability and execute relevant stuff
 #[cfg_attr(coverage, no_coverage)]
@@ -26,7 +23,10 @@ pub fn init_cet() {
     if cet_supported {
         let mut cr4 = Cr4::read();
         cr4 |= Cr4Flags::CONTROL_FLOW_ENFORCEMENT;
-        unsafe {Cr4::write(cr4)};
-        unsafe {SCet.write(CetFlags::SS_ENABLE | CetFlag::IBT_ENABLE)};
+        unsafe { Cr4::write(cr4) };
+
+	let (mut cur_flags, page_addr) = SCet::read();
+	cur_flags |= CetFlags::SS_ENABLE | CetFlags::IBT_ENABLE;
+        unsafe { SCet::write(cur_flags, page_addr) };
     }
 }

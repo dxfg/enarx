@@ -24,6 +24,7 @@ use enarx_shim_kvm::pagetables::{unmap_identity, PDPT, PDT_C000_0000, PML4T, PT_
 use enarx_shim_kvm::print::enable_printing;
 use enarx_shim_kvm::snp::C_BIT_MASK;
 use enarx_shim_kvm::sse;
+use enarx_shim_kvm::cet;
 
 use core::arch::asm;
 use core::mem::size_of;
@@ -97,6 +98,7 @@ unsafe extern "sysv64" fn _pre_main(c_bit_mask: u64) -> ! {
 extern "sysv64" fn main() -> ! {
     unsafe { gdt::init() };
     sse::init_sse();
+    cet::init_cet();
     interrupts::init();
     exec::execute_exec()
 }

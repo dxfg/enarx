@@ -11,7 +11,7 @@ use x86_64::registers::model_specific::{SCet, CetFlags};
 #[cfg_attr(coverage, no_coverage)]
 pub fn init_cet() {
     const SHADOWSTACK_SUPPORTED_BIT: u32 = 1 << 7;
-    let shadowstack_supported = (cpuid_count(7, 0).edx & SHADOWSTACK_SUPPORTED_BIT) != 0;
+    let shadowstack_supported = (cpuid_count(7, 0).ecx & SHADOWSTACK_SUPPORTED_BIT) != 0;
     assert!(shadowstack_supported);
 
     const IBT_SUPPORTED_BIT: u32 = 1 << 20;

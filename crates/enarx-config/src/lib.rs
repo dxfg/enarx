@@ -13,6 +13,41 @@ use std::{collections::HashMap, ops::Deref};
 use serde::{de::Error as _, Deserialize, Deserializer};
 use url::Url;
 
+/// Configuration file template
+pub const CONFIG_TEMPLATE: &str = r#"# Configuration for a WASI application in an Enarx Keep
+
+# Environment variables
+# env = { "VAR1" = "var1", "VAR2" = "var2" }
+
+# Arguments
+# args = [ "--argument1", "--argument2=foo" ]
+
+# Pre-opened file descriptors
+[[files]]
+kind = "stdin"
+
+[[files]]
+kind = "stdout"
+
+[[files]]
+kind = "stderr"
+
+# A listen socket
+# [[files]]
+# name = "LISTEN"
+# kind = "listen"
+# prot = "tls" # or prot = "tcp"
+# port = 12345
+
+# An outgoing connected socket
+# [[files]]
+# name = "CONNECT"
+# kind = "connect"
+# prot = "tls" # or prot = "tcp"
+# host = "127.0.0.1"
+# port = 23456
+"#;
+
 const fn default_port() -> u16 {
     443
 }
@@ -301,5 +336,10 @@ mod test {
             err.to_string(),
             "invalid value for `name` contains ':' for key `files` at line 2 column 9"
         );
+    }
+
+    #[test]
+    fn check_template() {
+        let cfg: Config = toml::from_str(CONFIG_TEMPLATE).unwrap();
     }
 }

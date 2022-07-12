@@ -28,5 +28,5 @@ pub fn init_cet() {
         cr4 |= Cr4Flags::CONTROL_FLOW_ENFORCEMENT;
         unsafe {Cr4::write(cr4)};
         unsafe {SCet.write(CetFlags::SS_ENABLE | CetFlag::IBT_ENABLE)};
-    }
+    };
 }

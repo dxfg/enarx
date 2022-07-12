@@ -23,10 +23,10 @@ pub fn init_cet() {
     if cet_supported {
         let mut cr4 = Cr4::read();
         cr4 |= Cr4Flags::CONTROL_FLOW_ENFORCEMENT;
-        unsafe { Cr4::write(cr4) };
+        unsafe{Cr4::write(cr4)};
 
         let (mut cur_flags, page_addr) = SCet::read();
         cur_flags |= CetFlags::SS_ENABLE | CetFlags::IBT_ENABLE;
-        unsafe { SCet::write(cur_flags, page_addr) };
+        SCet::write(cur_flags, page_addr);
     }
 }

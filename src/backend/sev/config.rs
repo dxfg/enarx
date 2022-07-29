@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use super::snp::Parameters;
 use crate::backend::Signatures;
 use anyhow::{anyhow, Result};
 use goblin::elf64::program_header::PT_LOAD;
@@ -8,6 +9,7 @@ use sallyport::elf::{self, pf::kvm::SALLYPORT};
 pub struct Config {
     pub sallyport_block_size: usize,
     pub signatures: Option<Signatures>,
+    pub parameters: Parameters,
 }
 
 impl super::super::Config for Config {
@@ -33,9 +35,27 @@ impl super::super::Config for Config {
             unsafe { shim.note::<u64>(elf::note::NAME, elf::note::BLOCK_SIZE) }
                 .ok_or_else(|| anyhow!("KVM shim is missing BLOCK_SIZE"))? as usize;
 
+        let parameters: Parameters = unsafe {
+            Parameters {
+                policy: shim
+                    .note(elf::note::NAME, elf::note::snp::POLICY)
+                    .ok_or_else(|| anyhow!("KVM shim is missing POLICY"))?,
+                family_id: shim
+                    .note(elf::note::NAME, elf::note::snp::FAMILY_ID)
+                    .ok_or_else(|| anyhow!("KVM shim is missing FAMILY_ID"))?,
+                image_id: shim
+                    .note(elf::note::NAME, elf::note::snp::IMAGE_ID)
+                    .ok_or_else(|| anyhow!("KVM shim is missing IMAGE_ID"))?,
+                guest_svn: shim
+                    .note(elf::note::NAME, elf::note::snp::SVN)
+                    .ok_or_else(|| anyhow!("KVM shim is missing GUEST_SVN"))?,
+            }
+        };
+
         Ok(Self {
             sallyport_block_size,
             signatures,
+            parameters,
         })
     }
 }

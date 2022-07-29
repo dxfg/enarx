@@ -6,16 +6,21 @@ mod package;
 mod platform;
 mod repo;
 mod run;
+#[cfg(enarx_with_shim)]
+mod sign;
 mod tree;
 mod unstable;
 mod user;
 
-use crate::backend::{Backend, BACKENDS};
+use crate::backend::{Backend, Signatures, BACKENDS};
 
+use std::fs::File;
+use std::io::Read;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
+use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand};
 use log::info;
 
@@ -63,6 +68,9 @@ enum Subcommands {
     Package(package::Subcommands),
     #[clap(subcommand)]
     Repo(repo::Subcommands),
+    #[cfg(enarx_with_shim)]
+    #[clap(hide = true)]
+    Sign(sign::Options),
     #[clap(subcommand, hide = true)]
     Tree(tree::Subcommands),
     #[clap(subcommand)]
@@ -80,6 +88,8 @@ impl Subcommands {
             Self::Platform(subcmd) => subcmd.dispatch(),
             Self::Package(subcmd) => subcmd.dispatch(),
             Self::Repo(subcmd) => subcmd.dispatch(),
+            #[cfg(enarx_with_shim)]
+            Self::Sign(cmd) => cmd.execute(),
             Self::Tree(subcmd) => subcmd.dispatch(),
             Self::User(subcmd) => subcmd.dispatch(),
             Self::Unstable(subcmd) => subcmd.dispatch(),
@@ -200,6 +210,20 @@ impl From<LogTarget> for env_logger::Target {
         match t {
             LogTarget::Stdout => Self::Stdout,
             LogTarget::Stderr => Self::Stderr,
+        }
+    }
+}
+
+fn get_signatures(path: Option<Utf8PathBuf>) -> anyhow::Result<Option<Signatures>> {
+    match path {
+        None => Ok(None),
+        Some(path) => {
+            let mut file = File::open(path).context("Failed to open hashes file")?;
+            let mut buffer = String::new();
+            file.read_to_string(&mut buffer)?;
+            serde_json::from_str::<Signatures>(&buffer)
+                .context("serde_json")
+                .map(Some)
         }
     }
 }

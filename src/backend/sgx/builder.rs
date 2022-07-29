@@ -8,7 +8,7 @@ use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 use std::sync::{Arc, RwLock};
 
-use anyhow::{Context, Error, Result};
+use anyhow::{bail, Context, Error, Result};
 use mmarinus::{perms, Map, Shared};
 use primordial::Page;
 use sgx::crypto::{rcrypto::*, *};
@@ -130,27 +130,37 @@ impl TryFrom<Builder> for Arc<dyn super::super::Keep> {
     type Error = Error;
 
     fn try_from(mut builder: Builder) -> Result<Self> {
-        // Create the enclave signature
-        let hash = builder.hash.finish();
-        let author = Author::new(0, 0);
-        let body = builder.cnfg.parameters.body(hash);
-        let key = if let Ok(key) = std::env::var("ENARX_TEST_SGX_KEY_FILE")
-            .map_err(Error::new)
-            .and_then(|test_key_file| File::open(test_key_file).map_err(Error::new))
-            .and_then(|mut f| {
-                let mut buffer = String::new();
-                f.read_to_string(&mut buffer).map_err(Error::new)?;
-                Ok(buffer)
-            })
-            .and_then(|keystr| RS256PrivateKey::from_pem(&keystr).map_err(Error::new))
-        {
-            key
-        } else {
-            RS256PrivateKey::generate(3).context("Failed to create RSA key")?
-        };
+        let signature = if let Some(signatures) = builder.cnfg.signatures {
+            let sig_blob = signatures
+                .get("sgx")
+                .context("Failed to get SGX signature.")?;
 
-        let signature =
-            Signature::new(&key, author, body).context("Failed to create RSA signature")?;
+            if sig_blob.len() != core::mem::size_of::<Signature>() {
+                bail!("Invalid SGX signature length");
+            }
+            unsafe { (sig_blob.as_ptr() as *const Signature).read_unaligned() }
+        } else {
+            // Create the enclave signature
+            let hash = builder.hash.finish();
+            let author = Author::new(0, 0);
+            let body = builder.cnfg.parameters.body(hash);
+            let key = if let Ok(key) = std::env::var("ENARX_TEST_SGX_KEY_FILE")
+                .map_err(Error::new)
+                .and_then(|test_key_file| File::open(test_key_file).map_err(Error::new))
+                .and_then(|mut f| {
+                    let mut buffer = String::new();
+                    f.read_to_string(&mut buffer).map_err(Error::new)?;
+                    Ok(buffer)
+                })
+                .and_then(|keystr| RS256PrivateKey::from_pem(&keystr).map_err(Error::new))
+            {
+                key
+            } else {
+                RS256PrivateKey::generate(3).context("Failed to create RSA key")?
+            };
+
+            Signature::new(&key, author, body).context("Failed to create RSA signature")?
+        };
 
         // Initialize the enclave.
         let init = Init::new(&signature);

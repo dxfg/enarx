@@ -3,17 +3,18 @@
 use super::cpuid_page::CpuidPage;
 use super::snp::firmware::Firmware;
 use super::snp::launch::*;
+use super::snp::ByteSized;
 
 use super::SnpKeepPersonality;
 use crate::backend::kvm::builder::kvm_try_from_builder;
-use crate::backend::kvm::config::Config;
 use crate::backend::kvm::mem::Region;
 
 use std::convert::TryFrom;
 use std::sync::{Arc, RwLock};
 use std::{thread, time};
 
-use anyhow::{Context, Error};
+use super::hasher::Hasher;
+use anyhow::{anyhow, Context, Error};
 use kvm_ioctls::Kvm;
 use mmarinus::{perms, Map};
 use primordial::Page;
@@ -25,7 +26,7 @@ const SEV_RETRIES: usize = 3;
 const SEV_RETRY_SLEEP_MS: u64 = 500;
 
 pub struct Builder {
-    config: Config,
+    hasher: Hasher,
     kvm_fd: Kvm,
     launcher: Launcher<Started, Firmware>,
     regions: Vec<Region>,
@@ -60,10 +61,10 @@ fn retry<O>(func: impl Fn() -> anyhow::Result<O>) -> anyhow::Result<O> {
     }
 }
 
-impl TryFrom<super::super::kvm::config::Config> for Builder {
+impl TryFrom<super::config::Config> for Builder {
     type Error = Error;
 
-    fn try_from(config: super::super::kvm::config::Config) -> anyhow::Result<Self> {
+    fn try_from(config: super::config::Config) -> anyhow::Result<Self> {
         let (kvm_fd, launcher) = retry(|| {
             // try to open /dev/sev and start the Launcher several times
 
@@ -79,18 +80,14 @@ impl TryFrom<super::super::kvm::config::Config> for Builder {
         })?;
 
         let start = Start {
-            policy: Policy {
-                flags: PolicyFlags::SMT,
-                ..Default::default()
-            },
-            gosvw: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            policy: config.parameters.policy,
             ..Default::default()
         };
 
         let launcher = launcher.start(start).context("SNP Launcher start failed")?;
 
         Ok(Builder {
-            config,
+            hasher: Hasher::try_from(config)?,
             kvm_fd,
             launcher,
             regions: Vec::new(),
@@ -100,7 +97,7 @@ impl TryFrom<super::super::kvm::config::Config> for Builder {
 }
 
 impl super::super::Mapper for Builder {
-    type Config = super::super::kvm::config::Config;
+    type Config = super::config::Config;
     type Output = Arc<dyn super::super::Keep>;
 
     fn map(
@@ -115,7 +112,7 @@ impl super::super::Mapper for Builder {
         }
 
         let mem_region = super::super::kvm::builder::kvm_builder_map(
-            self.config.sallyport_block_size as _,
+            self.hasher.config.sallyport_block_size as _,
             &mut self.sallyports,
             self.launcher.as_mut(),
             &mut pages,
@@ -125,6 +122,9 @@ impl super::super::Mapper for Builder {
         )?;
 
         let dp = VmplPerms::empty();
+
+        // hash before launcher.update_data() encrypts the data
+        self.hasher.hash(pages.as_ref(), to, with)?;
 
         if with & CPUID != 0 {
             assert_eq!(pages.len(), Page::SIZE);
@@ -169,7 +169,7 @@ impl super::super::Mapper for Builder {
         } else {
             let update = Update::new(
                 to as u64 >> 12,
-                &pages,
+                pages.as_ref(),
                 false,
                 PageType::Normal,
                 (dp, dp, dp),
@@ -189,27 +189,52 @@ impl super::super::Mapper for Builder {
 impl TryFrom<Builder> for Arc<dyn super::super::Keep> {
     type Error = Error;
 
-    fn try_from(mut builder: Builder) -> anyhow::Result<Self> {
-        let vcpu_fd = kvm_try_from_builder(
-            &builder.sallyports,
-            &mut builder.kvm_fd,
-            builder.launcher.as_mut(),
-        )?;
+    fn try_from(builder: Builder) -> anyhow::Result<Self> {
+        let Builder {
+            mut hasher,
+            mut kvm_fd,
+            mut launcher,
+            regions,
+            sallyports,
+        } = builder;
 
-        let finish = Finish::new(None, None, [0u8; 32]);
+        let sallyport_block_size = hasher.config.sallyport_block_size;
+        let signatures = hasher.config.signatures.take();
 
-        let (vm_fd, sev_fd) = builder
-            .launcher
+        let id_block_vec: Vec<u8> = hasher.try_into()?;
+        let id_block: IdBlock = unsafe { IdBlock::from_bytes(&id_block_vec) }
+            .ok_or_else(|| anyhow!("Invalid SEV-SNP IdBlock signature!"))?;
+        let id_auth;
+
+        let vcpu_fd = kvm_try_from_builder(&sallyports, &mut kvm_fd, launcher.as_mut())?;
+
+        let finish = if let Some(signatures) = signatures {
+            let sig_blob = signatures
+                .get("sev")
+                .context("Failed to get SEV signature.")?;
+
+            if sig_blob.len() != (core::mem::size_of::<IdAuth>()) {
+                return Err(anyhow!("Invalid SEV signature blob size."));
+            }
+
+            id_auth = unsafe { (sig_blob.as_ptr() as *const IdAuth).read_unaligned() };
+
+            Finish::new(Some((&id_block, &id_auth)), true, [0u8; 32])
+        } else {
+            Finish::new(None, false, [0u8; 32])
+        };
+
+        let (vm_fd, sev_fd) = launcher
             .finish(finish)
             .context("SNP Launcher finish failed")?;
 
         Ok(Arc::new(RwLock::new(super::Keep::<SnpKeepPersonality> {
-            kvm_fd: builder.kvm_fd,
+            kvm_fd,
             vm_fd,
             cpu_fds: vec![vcpu_fd],
-            regions: builder.regions,
-            sallyport_block_size: builder.config.sallyport_block_size,
-            sallyports: builder.sallyports,
+            regions,
+            sallyport_block_size,
+            sallyports,
             personality: SnpKeepPersonality { _sev_fd: sev_fd },
         })))
     }

@@ -32,10 +32,29 @@ macro_rules! impl_const_id {
 
 pub mod firmware;
 pub mod launch;
+pub mod sign;
 pub mod vcek;
 
 use std::fmt::{Debug, Display, Formatter};
+use std::mem::size_of;
 use std::{error, io};
+
+pub trait ByteSized: Sized {
+    /// The constant default value.
+    const SIZE: usize = size_of::<Self>();
+
+    unsafe fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::SIZE {
+            return None;
+        }
+
+        Some((bytes.as_ptr() as *const _ as *const Self).read_unaligned())
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, Self::SIZE) }
+    }
+}
 
 /// There are a number of error conditions that can occur between this
 /// layer all the way down to the SEV platform. Most of these cases have
@@ -273,6 +292,19 @@ impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.major, self.minor)
     }
+}
+
+/// Enclave creation parameters
+///
+/// This type is not specified in the AMD documentation and exists for
+/// convenience in manipulating sets of configuration.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Parameters {
+    pub policy: u64,
+    pub family_id: [u8; 16],
+    pub image_id: [u8; 16],
+    pub guest_svn: u32,
 }
 
 #[cfg(test)]

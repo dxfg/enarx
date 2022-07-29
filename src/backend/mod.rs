@@ -20,6 +20,8 @@ mod probe;
 #[cfg(enarx_with_shim)]
 use binary::{Binary, Loader, Mapper};
 
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -35,11 +37,28 @@ pub struct Binary<'a> {
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
+#[derive(Default, Debug, serde::Deserialize, serde::Serialize)]
+pub struct Signatures(HashMap<String, Vec<u8>>);
+
+impl Deref for Signatures {
+    type Target = HashMap<String, Vec<u8>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Signatures {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 pub(crate) trait Config: Sized {
     type Flags;
 
     fn flags(flags: u32) -> Self::Flags;
-    fn new(shim: &Binary<'_>, exec: &Binary<'_>) -> Result<Self>;
+    fn new(shim: &Binary<'_>, exec: &Binary<'_>, signatures: Option<Signatures>) -> Result<Self>;
 }
 
 pub trait Backend: Sync + Send {
@@ -56,7 +75,12 @@ pub trait Backend: Sync + Send {
     fn config(&self) -> Vec<Datum>;
 
     /// Create a keep instance
-    fn keep(&self, shim: &[u8], exec: &[u8]) -> Result<Arc<dyn Keep>>;
+    fn keep(
+        &self,
+        shim: &[u8],
+        exec: &[u8],
+        signatures: Option<Signatures>,
+    ) -> Result<Arc<dyn Keep>>;
 
     /// Hash the inputs
     fn hash(&self, shim: &[u8], exec: &[u8]) -> Result<Vec<u8>>;
@@ -145,7 +169,12 @@ impl Backend for NotSupportedBackend {
         false
     }
 
-    fn keep(&self, _shim: &[u8], _exec: &[u8]) -> Result<Arc<dyn Keep>> {
+    fn keep(
+        &self,
+        _shim: &[u8],
+        _exec: &[u8],
+        _signatures: Option<Signatures>,
+    ) -> Result<Arc<dyn Keep>> {
         unimplemented!()
     }
 
